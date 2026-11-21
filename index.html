@@ -50,6 +50,15 @@ textarea{width:100%;padding:4px 8px;resize:none;font:400 16px/30px 'Noto Sans KR
 .card h2{margin:0;font-family:'Noto Serif KR',serif;font-weight:700;font-size:18px;color:var(--green);overflow-wrap:anywhere}
 .card .pg{font-size:15px}
 .card p{margin:0;font-size:16px;line-height:1.7;padding-left:10px;border-left:3px solid var(--red);white-space:pre-wrap;overflow-wrap:anywhere}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+.smallbtn{min-height:44px;padding:0 16px;font:700 14px 'Noto Sans KR',sans-serif;color:var(--green);background:transparent;border:1.5px solid var(--line);border-radius:4px;cursor:pointer}
+.smallbtn.danger{color:var(--err);border-color:var(--err)}
+.smallbtn.solid{color:var(--paper);background:var(--err);border-color:var(--err)}
+.smallbtn:disabled{opacity:.6;cursor:not-allowed}
+.editbox{display:flex;flex-direction:column;gap:14px}
+.editbox .row{display:flex;gap:8px}
+.editbox .row>*{flex:1}
+.confirm{margin:0;font-size:15px;font-weight:700;color:var(--err);text-align:right}
 .tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .count{font-size:14px;font-weight:700;color:var(--sub)}
 nav{flex:none;height:68px;display:flex;background:var(--paper);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
@@ -97,6 +106,7 @@ const ICON_LIST = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" s
 
 /* ===== 상태 ===== */
 let sb = null;
+function newRec() { return { status: 'idle', rows: [], err: '', editId: null, edit: { title: '', from: '', to: '', note: '' }, delId: null, busyId: null, rowErr: null }; }
 const state = {
   ready: false,
   session: null,
@@ -106,7 +116,7 @@ const state = {
   login: { email: '', sent: false, busy: false, err: '' },
   draft: { title: '', from: '', to: '', note: '' },
   write: { busy: false, ok: '', err: '' },
-  rec: { status: 'idle', rows: [], err: '' }   // idle | loading | ready | error
+  rec: newRec()   // status: idle | loading | ready | error
 };
 
 /* ===== 로그인 ===== */
@@ -202,6 +212,55 @@ async function loadRecords() {
   else { R.rows = data || []; R.status = 'ready'; }
   render();
 }
+/* ===== 기록 수정·삭제 ===== */
+function rowErrorText(e, what) {
+  const m = (e.message || '').toLowerCase();
+  if (e.status === 401 || e.code === 'PGRST301' || m.includes('jwt')) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
+  if (e.code === '23514') return '입력값이 저장 규칙에 맞지 않습니다. 쪽수를 확인해 주세요.';
+  return what + '하지 못했습니다. (' + (e.message || '알 수 없는 오류') + ')';
+}
+function startEdit(r) {
+  const R = state.rec;
+  R.editId = r.id; R.delId = null; R.rowErr = null;
+  R.edit = { title: r.book_title, from: String(r.page_from), to: String(r.page_to), note: r.note || '' };
+  render(); focus('e-title');
+}
+function cancelEdit() { const R = state.rec; R.editId = null; R.rowErr = null; render(); }
+async function saveEdit(ev, id) {
+  ev.preventDefault();
+  const R = state.rec, d = R.edit;
+  if (R.busyId) return;
+  const title = d.title.trim(), from = Number(d.from), to = Number(d.to);
+  const fail = (msg, fid) => { R.rowErr = { id, text: msg }; render(); focus(fid); };
+  if (!title) return fail('읽은 책 제목을 적어 주세요.', 'e-title');
+  if (d.from === '' || !Number.isInteger(from) || from < 1) return fail('시작 쪽을 1 이상의 숫자로 적어 주세요.', 'e-from');
+  if (d.to === '' || !Number.isInteger(to) || to < 1) return fail('끝 쪽을 1 이상의 숫자로 적어 주세요.', 'e-to');
+  if (to < from) return fail('끝 쪽은 시작 쪽보다 작을 수 없습니다.', 'e-to');
+  R.busyId = id; R.rowErr = null; render();
+  const { data, error } = await sb.from(TABLE)
+    .update({ book_title: title, page_from: from, page_to: to, note: d.note.trim() })
+    .eq('id', id)
+    .select('id,used_on,book_title,page_from,page_to,note,created_at');
+  R.busyId = null;
+  if (error) R.rowErr = { id, text: rowErrorText(error, '수정') };
+  else if (!data || !data.length) R.rowErr = { id, text: '수정하지 못했습니다. 이미 지워졌거나 권한이 없습니다. 새로고침해 주세요.' };
+  else { R.rows = R.rows.map((x) => (x.id === id ? data[0] : x)); R.editId = null; }
+  render();
+}
+function askDelete(id) { const R = state.rec; R.delId = id; R.editId = null; R.rowErr = null; render(); }
+function cancelDelete() { const R = state.rec; R.delId = null; R.rowErr = null; render(); }
+async function doDelete(id) {
+  const R = state.rec;
+  if (R.busyId) return;
+  R.busyId = id; R.rowErr = null; render();
+  const { data, error } = await sb.from(TABLE).delete().eq('id', id).select('id');
+  R.busyId = null;
+  if (error) R.rowErr = { id, text: rowErrorText(error, '삭제') };
+  else if (!data || !data.length) R.rowErr = { id, text: '삭제하지 못했습니다. 이미 지워졌거나 권한이 없습니다. 새로고침해 주세요.' };
+  else { R.rows = R.rows.filter((x) => x.id !== id); R.delId = null; }
+  render();
+}
+
 function go(view) {
   state.view = view;
   render();
@@ -266,13 +325,45 @@ function recordView() {
     wrap.append(h('p', { class: 'lead', role: 'status' }, '아직 기록이 없습니다. "오늘 쓰기"에서 첫 기록을 남겨 보세요.'));
     return wrap;
   }
-  wrap.append(h('div', { class: 'list', 'aria-live': 'polite' }, R.rows.map((r) =>
-    h('article', { class: 'card' },
-      h('span', { class: 'date' }, r.used_on),
-      h('h2', {}, r.book_title),
-      h('span', { class: 'pg' }, '읽은 페이지 ' + r.page_from + ' ~ ' + r.page_to + '쪽'),
-      r.note ? h('p', {}, r.note) : null))));
+  wrap.append(h('div', { class: 'list' }, R.rows.map(cardEl)));
   return wrap;
+}
+
+function cardEl(r) {
+  const R = state.rec, busy = R.busyId === r.id;
+  const err = R.rowErr && R.rowErr.id === r.id ? h('p', { class: 'msg err', role: 'alert', style: 'text-align:left' }, R.rowErr.text) : null;
+  if (R.editId === r.id) {
+    const d = R.edit;
+    const t = h('input', { id: 'e-title', type: 'text', autocomplete: 'off', maxlength: '200', 'aria-label': '읽은 책', oninput: (e) => { d.title = e.target.value; } });
+    const f = h('input', { id: 'e-from', type: 'number', min: '1', inputmode: 'numeric', placeholder: '시작 쪽', 'aria-label': '시작 쪽', oninput: (e) => { d.from = e.target.value; } });
+    const o = h('input', { id: 'e-to', type: 'number', min: '1', inputmode: 'numeric', placeholder: '끝 쪽', 'aria-label': '끝 쪽', oninput: (e) => { d.to = e.target.value; } });
+    const n = h('textarea', { id: 'e-note', rows: '4', 'aria-label': '인상 깊었던 내용', oninput: (e) => { d.note = e.target.value; } });
+    t.value = d.title; f.value = d.from; o.value = d.to; n.value = d.note;
+    return h('article', { class: 'card' }, h('form', { class: 'editbox', novalidate: true, onsubmit: (ev) => saveEdit(ev, r.id) },
+      h('span', { class: 'date' }, r.used_on + ' 기록 수정'),
+      t,
+      h('div', { class: 'pages' }, f, h('span', { class: 'sep', 'aria-hidden': 'true' }, '~'), o, h('span', { class: 'unit' }, '쪽')),
+      n,
+      err,
+      h('div', { class: 'acts' },
+        h('button', { type: 'button', class: 'smallbtn', disabled: busy, onclick: cancelEdit }, '취소'),
+        h('button', { type: 'submit', class: 'smallbtn solid', style: 'background:var(--green);border-color:var(--green)', disabled: busy }, busy ? '저장 중…' : '수정 저장'))));
+  }
+  const asking = R.delId === r.id;
+  return h('article', { class: 'card' },
+    h('span', { class: 'date' }, r.used_on),
+    h('h2', {}, r.book_title),
+    h('span', { class: 'pg' }, '읽은 페이지 ' + r.page_from + ' ~ ' + r.page_to + '쪽'),
+    r.note ? h('p', {}, r.note) : null,
+    err,
+    asking ? h('p', { class: 'confirm', role: 'alert' }, '이 기록을 지울까요? 되돌릴 수 없습니다.') : null,
+    asking
+      ? h('div', { class: 'acts' },
+          h('button', { type: 'button', class: 'smallbtn', disabled: busy, onclick: cancelDelete }, '취소'),
+          h('button', { type: 'button', class: 'smallbtn solid', disabled: busy, onclick: () => doDelete(r.id) }, busy ? '지우는 중…' : '지우기'))
+      : h('div', { class: 'acts' },
+          h('button', { type: 'button', class: 'smallbtn', onclick: () => startEdit(r) }, '수정'),
+          h('button', { type: 'button', class: 'smallbtn danger', onclick: () => askDelete(r.id) }, '삭제')));
 }
 
 function navEl() {
@@ -311,7 +402,7 @@ async function boot() {
     const next = session && session.user && session.user.id;
     state.session = session;
     if (!state.ready || prev === next) return;   // 토큰 갱신 등: 화면을 다시 그리지 않는다
-    if (!next) { state.rec = { status: 'idle', rows: [], err: '' }; state.login.sent = false; state.view = 'write'; }
+    if (!next) { state.rec = newRec(); state.login.sent = false; state.view = 'write'; }
     render();
     if (next && state.view === 'record') setTimeout(loadRecords, 0);
   });
