@@ -113,7 +113,8 @@ const state = {
   view: 'write',               // 'write' | 'record'
   fatal: '',
   authNotice: '',              // 로그인 링크로 돌아왔을 때의 오류 안내
-  login: { email: '', sent: false, busy: false, err: '' },
+  login: { email: '', pw: '', mode: 'pw', sent: false, busy: false, err: '' },
+  pwset: { a: '', b: '', busy: false, ok: '', err: '' },
   draft: { title: '', from: '', to: '', note: '' },
   write: { busy: false, ok: '', err: '' },
   rec: newRec()   // status: idle | loading | ready | error
@@ -161,15 +162,55 @@ async function sendLink(ev) {
   if (error) L.err = loginErrorText(error); else L.sent = true;
   render();
 }
+function pwLoginErrorText(e) {
+  const m = (e.message || '').toLowerCase(), c = e.code || '';
+  if (c === 'invalid_credentials' || m.includes('invalid login'))
+    return '이메일 또는 비밀번호가 맞지 않습니다. 비밀번호를 아직 만들지 않았다면 아래의 "메일 링크로 로그인"을 쓰세요.';
+  if (e.status === 429 || m.includes('rate limit')) return '시도가 너무 잦습니다. 잠시 뒤에 다시 시도해 주세요.';
+  return '로그인하지 못했습니다. (' + (e.message || '알 수 없는 오류') + ')';
+}
+async function passwordLogin(ev) {
+  ev.preventDefault();
+  const L = state.login;
+  if (L.busy) return;
+  const email = (L.email || '').trim();
+  if (!email || !email.includes('@')) { L.err = '이메일 주소를 적어 주세요.'; render(); focus('f-email'); return; }
+  if (!L.pw) { L.err = '비밀번호를 적어 주세요.'; render(); focus('f-pw'); return; }
+  L.busy = true; L.err = ''; state.authNotice = ''; render();
+  const { error } = await sb.auth.signInWithPassword({ email, password: L.pw });
+  L.busy = false;
+  if (error) { L.err = pwLoginErrorText(error); L.pw = ''; }
+  else L.pw = '';
+  render();
+  if (error) focus('f-pw');
+}
+async function savePassword(ev) {
+  ev.preventDefault();
+  const P = state.pwset;
+  if (P.busy) return;
+  const fail = (msg, id) => { P.err = msg; P.ok = ''; render(); focus(id); };
+  if (P.a.length < 8) return fail('비밀번호는 8자 이상으로 정해 주세요.', 'p-a');
+  if (P.a !== P.b) return fail('두 비밀번호가 서로 다릅니다.', 'p-b');
+  P.busy = true; P.err = ''; P.ok = ''; render();
+  const { error } = await sb.auth.updateUser({ password: P.a });
+  P.busy = false;
+  if (error) {
+    const m = (error.message || '').toLowerCase();
+    P.err = m.includes('different from the old') ? '이전과 같은 비밀번호입니다. 다른 비밀번호를 정해 주세요.'
+      : m.includes('weak') || m.includes('password should') ? '비밀번호가 너무 쉽습니다. 더 길고 복잡하게 정해 주세요.'
+      : '비밀번호를 저장하지 못했습니다. (' + (error.message || '알 수 없는 오류') + ')';
+  } else { P.a = ''; P.b = ''; P.ok = '비밀번호를 정했습니다. 다음부터는 이메일과 비밀번호로 로그인할 수 있어요.'; }
+  render();
+}
 async function logout() { await sb.auth.signOut(); }
 
 /* ===== 저장 ===== */
 function saveErrorText(e) {
   const m = (e.message || '').toLowerCase();
   if (e.status === 401 || e.code === 'PGRST301' || m.includes('jwt'))
-    return '로그인이 만료되었습니다. 다시 로그인해 주세요. 적은 내용은 남아 있습니다.';
+    return '연결이 거부되었습니다. Supabase 규칙(SQL)을 확인해 주세요. 적은 내용은 남아 있습니다.';
   if (e.code === '23514') return '입력값이 저장 규칙에 맞지 않습니다. 쪽수를 확인해 주세요.';
-  if (e.code === '42501') return '저장 권한이 없습니다. 로그인 상태를 확인해 주세요.';
+  if (e.code === '42501') return '저장 권한이 없습니다. Supabase에 규칙(SQL)이 적용됐는지 확인해 주세요.';
   return '저장하지 못했습니다. (' + (e.message || '알 수 없는 오류') + ') 적은 내용은 그대로 남아 있습니다.';
 }
 async function onSave(ev) {
@@ -215,7 +256,7 @@ async function loadRecords() {
 /* ===== 기록 수정·삭제 ===== */
 function rowErrorText(e, what) {
   const m = (e.message || '').toLowerCase();
-  if (e.status === 401 || e.code === 'PGRST301' || m.includes('jwt')) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
+  if (e.status === 401 || e.code === 'PGRST301' || m.includes('jwt')) return '연결이 거부되었습니다. Supabase 규칙(SQL)을 확인해 주세요.';
   if (e.code === '23514') return '입력값이 저장 규칙에 맞지 않습니다. 쪽수를 확인해 주세요.';
   return what + '하지 못했습니다. (' + (e.message || '알 수 없는 오류') + ')';
 }
@@ -273,10 +314,25 @@ function head(title, lead) { return h('div', { class: 'head' }, h('h1', {}, titl
 
 function loginView() {
   const L = state.login;
+  if (L.mode === 'pw') {
+    const em = h('input', { id: 'f-email', type: 'email', autocomplete: 'username', inputmode: 'email', placeholder: 'name@example.com', oninput: (e) => { L.email = e.target.value; } });
+    const pw = h('input', { id: 'f-pw', type: 'password', autocomplete: 'current-password', placeholder: '비밀번호', oninput: (e) => { L.pw = e.target.value; } });
+    em.value = L.email; pw.value = L.pw;
+    const err = L.err || state.authNotice;
+    return h('div', { class: 'paper' }, h('form', { novalidate: true, onsubmit: passwordLogin },
+      head('로그인', '이메일과 비밀번호로 로그인합니다.'),
+      h('div', { class: 'field' }, h('label', { class: 'label', for: 'f-email' }, '이메일(아이디)'), em),
+      h('div', { class: 'field' }, h('label', { class: 'label', for: 'f-pw' }, '비밀번호'), pw),
+      h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+        h('button', { type: 'submit', class: 'primary', disabled: L.busy }, L.busy ? '확인 중…' : '로그인'),
+        err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, err) : null,
+        h('button', { type: 'button', class: 'linkbtn', onclick: () => { L.mode = 'link'; L.err = ''; state.authNotice = ''; render(); } }, '메일 링크로 로그인 (비밀번호가 없을 때)'))));
+  }
   if (L.sent) {
     return h('div', { class: 'paper' }, h('div', { style: 'display:flex;flex-direction:column;gap:20px' },
       head('메일을 보냈습니다', L.email.trim() + ' 로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 이 페이지로 돌아옵니다. 메일이 안 보이면 스팸함도 확인해 주세요.'),
-      h('button', { type: 'button', class: 'secondary', onclick: () => { L.sent = false; L.err = ''; render(); focus('f-email'); } }, '이메일을 다시 입력하기')));
+      h('button', { type: 'button', class: 'secondary', onclick: () => { L.sent = false; L.err = ''; render(); focus('f-email'); } }, '이메일을 다시 입력하기'),
+      h('button', { type: 'button', class: 'linkbtn', onclick: () => { L.mode = 'pw'; L.sent = false; L.err = ''; render(); } }, '비밀번호로 로그인하기')));
   }
   const input = h('input', { id: 'f-email', type: 'email', autocomplete: 'email', inputmode: 'email', placeholder: 'name@example.com', oninput: (e) => { L.email = e.target.value; } });
   input.value = L.email;
@@ -286,7 +342,8 @@ function loginView() {
     h('div', { class: 'field' }, h('label', { class: 'label', for: 'f-email' }, '이메일'), input),
     h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
       h('button', { type: 'submit', class: 'primary', disabled: L.busy }, L.busy ? '보내는 중…' : '로그인 링크 받기'),
-      err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, err) : null)));
+      err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, err) : null,
+      h('button', { type: 'button', class: 'linkbtn', onclick: () => { L.mode = 'pw'; L.err = ''; render(); } }, '비밀번호로 로그인하기'))));
 }
 
 function writeView() {
@@ -307,6 +364,22 @@ function writeView() {
       h('button', { type: 'submit', class: 'primary', disabled: W.busy }, W.busy ? '저장 중…' : '저장하기'),
       W.err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, W.err) : null,
       W.ok ? h('p', { class: 'msg ok', id: 'msg', role: 'status' }, W.ok) : null)));
+}
+
+function pwView() {
+  const P = state.pwset;
+  const a = h('input', { id: 'p-a', type: 'password', autocomplete: 'new-password', placeholder: '새 비밀번호 (8자 이상)', oninput: (e) => { P.a = e.target.value; } });
+  const b = h('input', { id: 'p-b', type: 'password', autocomplete: 'new-password', placeholder: '새 비밀번호 한 번 더', oninput: (e) => { P.b = e.target.value; } });
+  a.value = P.a; b.value = P.b;
+  const email = state.session && state.session.user && state.session.user.email;
+  return h('div', { class: 'paper' }, h('form', { novalidate: true, onsubmit: savePassword },
+    head('비밀번호 정하기', (email ? email + ' 계정의 ' : '') + '비밀번호를 정하면 메일 없이 로그인할 수 있습니다.'),
+    h('div', { class: 'field' }, h('label', { class: 'label', for: 'p-a' }, '새 비밀번호'), a),
+    h('div', { class: 'field' }, h('label', { class: 'label', for: 'p-b' }, '비밀번호 확인'), b),
+    h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+      h('button', { type: 'submit', class: 'primary', disabled: P.busy }, P.busy ? '저장 중…' : '비밀번호 저장'),
+      P.err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, P.err) : null,
+      P.ok ? h('p', { class: 'msg ok', id: 'msg', role: 'status' }, P.ok) : null)));
 }
 
 function recordView() {
@@ -377,11 +450,11 @@ function render() {
   if (state.fatal) main.append(h('p', { class: 'msg err', role: 'alert', style: 'text-align:left' }, state.fatal));
   else if (!state.ready) main.append(h('p', { class: 'lead', role: 'status' }, '불러오는 중…'));
   else if (!state.session) main.append(loginView());
-  else main.append(state.view === 'write' ? writeView() : recordView());
+  else main.append(state.view === 'write' ? writeView() : state.view === 'pw' ? pwView() : recordView());
   const logged = state.ready && state.session;
   const parts = [
     h('header', {}, icon(ICON_BOOK), h('span', { class: 'brand' }, '레테의 건너편'), h('span', { class: 'spacer' }),
-      logged ? h('button', { type: 'button', class: 'linkbtn', onclick: logout }, '로그아웃') : null),
+      null),
     main
   ];
   if (logged) parts.push(navEl());
@@ -390,26 +463,14 @@ function render() {
 
 /* ===== 시작 ===== */
 async function boot() {
-  state.authNotice = readAuthUrlError();
   render();
   if (!window.supabase || !window.supabase.createClient) {
     state.fatal = '연결 도구를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.';
     render(); return;
   }
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  sb.auth.onAuthStateChange((event, session) => {
-    const prev = state.session && state.session.user && state.session.user.id;
-    const next = session && session.user && session.user.id;
-    state.session = session;
-    if (!state.ready || prev === next) return;   // 토큰 갱신 등: 화면을 다시 그리지 않는다
-    if (!next) { state.rec = newRec(); state.login.sent = false; state.view = 'write'; }
-    render();
-    if (next && state.view === 'record') setTimeout(loadRecords, 0);
-  });
-  const { data } = await sb.auth.getSession();
-  state.session = data && data.session;
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  state.session = { user: { id: 'local' } };   // 로그인 없음: 항상 열린 상태
   state.ready = true;
-  if (location.hash || location.search) history.replaceState(null, '', location.pathname);
   render();
 }
 boot();
