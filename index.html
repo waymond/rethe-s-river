@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>레테의 건너편</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EFE6D2; --paper:#FBF6E9; --card:#FFFDF6; --line:#CBBB96; --rule:#8C7A55;
+  --green:#1F3A2C; --brown:#7A5316; --ink:#2B2218; --sub:#5C5040; --red:#B5483A; --err:#9A3326;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg)}
+body{color:var(--ink);font-family:'Noto Sans KR',system-ui,sans-serif}
+#app{max-width:480px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+header{flex:none;height:60px;padding:0 20px;display:flex;align-items:center;gap:10px;border-bottom:3px double var(--rule)}
+.brand{font-family:'Noto Serif KR',serif;font-weight:700;font-size:20px;color:var(--green);letter-spacing:.04em}
+.spacer{flex:1}
+.linkbtn{min-height:44px;padding:0 6px;font:700 14px 'Noto Sans KR',sans-serif;color:var(--sub);background:transparent;border:0;cursor:pointer;text-decoration:underline}
+main{flex:1;min-height:0;overflow-y:auto;padding:20px}
+.paper{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:22px 20px 24px;box-shadow:0 2px 0 var(--line)}
+form{display:flex;flex-direction:column;gap:20px;margin:0}
+.head{display:flex;flex-direction:column;gap:6px;padding-bottom:12px;border-bottom:2px solid var(--green)}
+h1{margin:0;font-family:'Noto Serif KR',serif;font-weight:700;font-size:24px;color:var(--green)}
+.lead{margin:0;font-size:15px;line-height:1.6;color:var(--sub)}
+.field{display:flex;flex-direction:column;gap:2px}
+.field.note{gap:6px}
+.label{font-size:14px;font-weight:700;color:var(--sub)}
+input[type=text],input[type=email],input[type=number]{width:100%;min-height:48px;padding:8px 2px;font:500 17px 'Noto Sans KR',sans-serif;color:var(--ink);background:transparent;border:0;border-bottom:1.5px solid var(--rule);border-radius:0}
+input[type=number]{-moz-appearance:textfield}
+input::placeholder,textarea::placeholder{color:var(--sub)}
+.pages{display:flex;align-items:center;gap:10px}
+.pages input{flex:1;min-width:0}
+.pages .sep,.pages .unit{color:var(--sub)}
+.pages .sep{font-size:18px}
+.pages .unit{font-size:16px}
+textarea{width:100%;padding:4px 8px;resize:none;font:400 16px/30px 'Noto Sans KR',sans-serif;color:var(--ink);background-color:transparent;background-image:repeating-linear-gradient(transparent,transparent 29px,#D3C39B 29px,#D3C39B 30px);background-attachment:local;border:0;border-left:3px solid var(--red);border-radius:0}
+.primary{width:100%;min-height:52px;font:700 17px 'Noto Sans KR',sans-serif;color:var(--paper);background:var(--green);border:1.5px solid var(--green);border-radius:4px;cursor:pointer}
+.primary:disabled{opacity:.6;cursor:not-allowed}
+.secondary{width:100%;min-height:48px;font:700 16px 'Noto Sans KR',sans-serif;color:var(--green);background:transparent;border:1.5px solid var(--green);border-radius:4px;cursor:pointer}
+.msg{margin:0;font-size:15px;font-weight:700;line-height:1.6;text-align:center}
+.msg.ok{color:var(--green)}
+.msg.err{color:var(--err)}
+.list{display:flex;flex-direction:column;gap:14px}
+.top{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 0 var(--line);padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card .date{font-size:14px;color:var(--sub)}
+.card h2{margin:0;font-family:'Noto Serif KR',serif;font-weight:700;font-size:18px;color:var(--green);overflow-wrap:anywhere}
+.card .pg{font-size:15px}
+.card p{margin:0;font-size:16px;line-height:1.7;padding-left:10px;border-left:3px solid var(--red);white-space:pre-wrap;overflow-wrap:anywhere}
+.tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.count{font-size:14px;font-weight:700;color:var(--sub)}
+nav{flex:none;height:68px;display:flex;background:var(--paper);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-top:3px solid transparent;background:transparent;color:var(--sub);font:700 13px 'Noto Sans KR',sans-serif;cursor:pointer}
+nav button[aria-current=page]{color:var(--green);border-top-color:var(--brown)}
+nav svg{display:block}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== 설정 ===== */
+const SUPABASE_URL = 'https://ikkgvzvriurbcxyfqtxi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_VZQ_Da1Q69ohDNx0GiYtdg_f60jBPS2'; // publishable 키(공개용)
+// 첫 로그인 때는 true(내 계정이 자동으로 만들어짐). 내 계정이 생긴 뒤에는 false로 바꾸세요.
+const ALLOW_NEW_USER = true;
+// 로그인 메일의 링크가 돌아올 주소. 비워 두면 이 페이지가 열려 있는 주소로 돌아옵니다.
+// 여기에 적는 주소는 Supabase의 Redirect URLs 목록에도 있어야 합니다.
+const RETURN_URL = '';
+const TABLE = 'reading_logs';
+const ROW_LIMIT = 200;
+
+/* ===== 작은 도우미 ===== */
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) {
+    if (c == null || c === false) continue;
+    e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+function icon(svg) { const s = document.createElement('span'); s.setAttribute('aria-hidden', 'true'); s.style.display = 'flex'; s.innerHTML = svg; return s; }
+const ICON_BOOK = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1F3A2C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v15H5.5C4.7 19 4 18.3 4 17.5z"/><path d="M20 5.5C20 4.7 19.3 4 18.5 4H13v15h5.5c.8 0 1.5-.7 1.5-1.5z"/></svg>';
+const ICON_PEN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/></svg>';
+const ICON_LIST = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="1.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h5"/></svg>';
+
+/* ===== 상태 ===== */
+let sb = null;
+const state = {
+  ready: false,
+  session: null,
+  view: 'write',               // 'write' | 'record'
+  fatal: '',
+  authNotice: '',              // 로그인 링크로 돌아왔을 때의 오류 안내
+  login: { email: '', sent: false, busy: false, err: '' },
+  draft: { title: '', from: '', to: '', note: '' },
+  write: { busy: false, ok: '', err: '' },
+  rec: { status: 'idle', rows: [], err: '' }   // idle | loading | ready | error
+};
+
+/* ===== 로그인 ===== */
+function readAuthUrlError() {
+  const p = new URLSearchParams((location.hash || '').replace(/^#/, '') + '&' + (location.search || '').replace(/^\?/, ''));
+  const code = p.get('error_code'), desc = p.get('error_description');
+  if (!code && !desc) return '';
+  return code === 'otp_expired'
+    ? '로그인 링크가 만료되었거나 이미 사용되었습니다. 새 링크를 받아 주세요.'
+    : '로그인하지 못했습니다. 새 링크를 받아 주세요.';
+}
+function loginErrorText(e) {
+  const m = (e.message || '').toLowerCase(), c = e.code || '';
+  if (e.status === 429 || c === 'over_email_send_rate_limit' || c === 'over_request_rate_limit' || m.includes('rate limit'))
+    return '메일 요청이 너무 잦습니다. 잠시 뒤에 다시 시도해 주세요.';
+  if (c === 'otp_disabled' || m.includes('signups not allowed'))
+    return '이 이메일로는 로그인할 수 없습니다. 가입할 때 쓴 이메일인지 확인해 주세요.';
+  if (c === 'email_address_not_authorized')
+    return '이 이메일 주소로는 메일을 보낼 수 없습니다. Supabase 계정에 쓰는 이메일로 시도해 주세요.';
+  if (c === 'validation_failed' || m.includes('invalid'))
+    return '이메일 주소를 다시 확인해 주세요.';
+  return '로그인 링크를 보내지 못했습니다. (' + (e.message || '알 수 없는 오류') + ')';
+}
+function returnUrl() {
+  if (RETURN_URL) return RETURN_URL;
+  return /^https?:$/.test(location.protocol) ? location.origin + location.pathname : '';
+}
+async function sendLink(ev) {
+  ev.preventDefault();
+  const L = state.login;
+  if (L.busy) return;
+  const email = (L.email || '').trim();
+  if (!email || !email.includes('@')) { L.err = '이메일 주소를 적어 주세요.'; render(); focus('f-email'); return; }
+  const back = returnUrl();
+  if (!back) {
+    L.err = '이 페이지가 웹 주소로 열려 있지 않아 로그인 메일이 돌아올 곳이 없습니다. 배포한 주소로 열어 주세요.';
+    render(); return;
+  }
+  L.busy = true; L.err = ''; state.authNotice = ''; render();
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: back, shouldCreateUser: ALLOW_NEW_USER } });
+  L.busy = false;
+  if (error) L.err = loginErrorText(error); else L.sent = true;
+  render();
+}
+async function logout() { await sb.auth.signOut(); }
+
+/* ===== 저장 ===== */
+function saveErrorText(e) {
+  const m = (e.message || '').toLowerCase();
+  if (e.status === 401 || e.code === 'PGRST301' || m.includes('jwt'))
+    return '로그인이 만료되었습니다. 다시 로그인해 주세요. 적은 내용은 남아 있습니다.';
+  if (e.code === '23514') return '입력값이 저장 규칙에 맞지 않습니다. 쪽수를 확인해 주세요.';
+  if (e.code === '42501') return '저장 권한이 없습니다. 로그인 상태를 확인해 주세요.';
+  return '저장하지 못했습니다. (' + (e.message || '알 수 없는 오류') + ') 적은 내용은 그대로 남아 있습니다.';
+}
+async function onSave(ev) {
+  ev.preventDefault();
+  const W = state.write, d = state.draft;
+  if (W.busy) return;
+  const title = d.title.trim(), from = Number(d.from), to = Number(d.to);
+  const fail = (msg, id) => { W.err = msg; W.ok = ''; render(); focus(id); };
+  if (!title) return fail('읽은 책 제목을 적어 주세요.', 'f-title');
+  if (d.from === '' || !Number.isInteger(from) || from < 1) return fail('시작 쪽을 1 이상의 숫자로 적어 주세요.', 'f-from');
+  if (d.to === '' || !Number.isInteger(to) || to < 1) return fail('끝 쪽을 1 이상의 숫자로 적어 주세요.', 'f-to');
+  if (to < from) return fail('끝 쪽은 시작 쪽보다 작을 수 없습니다.', 'f-to');
+  W.busy = true; W.err = ''; W.ok = ''; render();
+  const { error } = await sb.from(TABLE).insert({ book_title: title, page_from: from, page_to: to, note: d.note.trim() });
+  W.busy = false;
+  if (error) {
+    W.err = saveErrorText(error);
+  } else {
+    state.draft = { title: '', from: '', to: '', note: '' };
+    state.rec.status = 'idle';
+    W.ok = '저장했습니다. "기록"에서 볼 수 있어요.';
+  }
+  render();
+  const m = document.getElementById('msg');
+  if (m && m.scrollIntoView) m.scrollIntoView({ block: 'nearest' });
+}
+
+/* ===== 기록 불러오기 ===== */
+async function loadRecords() {
+  const R = state.rec, uid = state.session && state.session.user && state.session.user.id;
+  if (!uid) return;
+  R.status = 'loading'; R.err = ''; render();
+  const { data, error } = await sb.from(TABLE)
+    .select('id,used_on,book_title,page_from,page_to,note,created_at')
+    .order('used_on', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(ROW_LIMIT);
+  if (!(state.session && state.session.user && state.session.user.id === uid)) return; // 그 사이 로그아웃/계정 변경
+  if (error) { R.status = 'error'; R.err = '기록을 불러오지 못했습니다. (' + (error.message || '알 수 없는 오류') + ')'; }
+  else { R.rows = data || []; R.status = 'ready'; }
+  render();
+}
+function go(view) {
+  state.view = view;
+  render();
+  if (view === 'record' && (state.rec.status === 'idle' || state.rec.status === 'error')) loadRecords();
+}
+
+/* ===== 화면 ===== */
+function focus(id) { const e = document.getElementById(id); if (e) e.focus(); }
+function head(title, lead) { return h('div', { class: 'head' }, h('h1', {}, title), lead ? h('p', { class: 'lead' }, lead) : null); }
+
+function loginView() {
+  const L = state.login;
+  if (L.sent) {
+    return h('div', { class: 'paper' }, h('div', { style: 'display:flex;flex-direction:column;gap:20px' },
+      head('메일을 보냈습니다', L.email.trim() + ' 로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 이 페이지로 돌아옵니다. 메일이 안 보이면 스팸함도 확인해 주세요.'),
+      h('button', { type: 'button', class: 'secondary', onclick: () => { L.sent = false; L.err = ''; render(); focus('f-email'); } }, '이메일을 다시 입력하기')));
+  }
+  const input = h('input', { id: 'f-email', type: 'email', autocomplete: 'email', inputmode: 'email', placeholder: 'name@example.com', oninput: (e) => { L.email = e.target.value; } });
+  input.value = L.email;
+  const err = L.err || state.authNotice;
+  return h('div', { class: 'paper' }, h('form', { novalidate: true, onsubmit: sendLink },
+    head('로그인', '이메일을 입력하면 로그인 링크를 보내 드립니다. 비밀번호는 필요 없습니다.'),
+    h('div', { class: 'field' }, h('label', { class: 'label', for: 'f-email' }, '이메일'), input),
+    h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+      h('button', { type: 'submit', class: 'primary', disabled: L.busy }, L.busy ? '보내는 중…' : '로그인 링크 받기'),
+      err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, err) : null)));
+}
+
+function writeView() {
+  const d = state.draft, W = state.write;
+  const title = h('input', { id: 'f-title', type: 'text', autocomplete: 'off', maxlength: '200', placeholder: '책 제목', oninput: (e) => { d.title = e.target.value; } });
+  const from = h('input', { id: 'f-from', type: 'number', min: '1', inputmode: 'numeric', placeholder: '시작 쪽', 'aria-labelledby': 'pg-label', oninput: (e) => { d.from = e.target.value; } });
+  const to = h('input', { id: 'f-to', type: 'number', min: '1', inputmode: 'numeric', placeholder: '끝 쪽', 'aria-label': '끝 쪽', oninput: (e) => { d.to = e.target.value; } });
+  const note = h('textarea', { id: 'f-note', rows: '4', placeholder: '오늘 읽으며 마음에 남은 내용을 적어 두세요.', oninput: (e) => { d.note = e.target.value; } });
+  title.value = d.title; from.value = d.from; to.value = d.to; note.value = d.note;
+  return h('div', { class: 'paper' }, h('form', { novalidate: true, onsubmit: onSave },
+    head('오늘의 독서', '오늘 읽은 페이지를 입력하고, 인상 깊었던 내용을 저장합니다.'),
+    h('div', { class: 'field' }, h('label', { class: 'label', for: 'f-title' }, '읽은 책'), title),
+    h('div', { class: 'field' },
+      h('span', { class: 'label', id: 'pg-label' }, '오늘 읽은 페이지'),
+      h('div', { class: 'pages' }, from, h('span', { class: 'sep', 'aria-hidden': 'true' }, '~'), to, h('span', { class: 'unit' }, '쪽'))),
+    h('div', { class: 'field note' }, h('label', { class: 'label', for: 'f-note' }, '인상 깊었던 내용'), note),
+    h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
+      h('button', { type: 'submit', class: 'primary', disabled: W.busy }, W.busy ? '저장 중…' : '저장하기'),
+      W.err ? h('p', { class: 'msg err', id: 'msg', role: 'alert' }, W.err) : null,
+      W.ok ? h('p', { class: 'msg ok', id: 'msg', role: 'status' }, W.ok) : null)));
+}
+
+function recordView() {
+  const R = state.rec;
+  const wrap = h('div', {}, h('div', { class: 'top' }, h('h1', {}, '내 기록'), h('p', { class: 'lead' }, '저장한 독서 기록이 최근 날짜순으로 보입니다.')));
+  if (R.status === 'loading' || R.status === 'idle') { wrap.append(h('p', { class: 'lead', role: 'status' }, '불러오는 중…')); return wrap; }
+  if (R.status === 'error') {
+    wrap.append(h('p', { class: 'msg err', role: 'alert', style: 'text-align:left;margin-bottom:12px' }, R.err),
+      h('button', { type: 'button', class: 'secondary', onclick: loadRecords }, '다시 불러오기'));
+    return wrap;
+  }
+  wrap.append(h('div', { class: 'tools' },
+    h('span', { class: 'count' }, R.rows.length >= ROW_LIMIT ? '최근 ' + ROW_LIMIT + '개' : '총 ' + R.rows.length + '개'),
+    h('button', { type: 'button', class: 'linkbtn', onclick: loadRecords }, '새로고침')));
+  if (!R.rows.length) {
+    wrap.append(h('p', { class: 'lead', role: 'status' }, '아직 기록이 없습니다. "오늘 쓰기"에서 첫 기록을 남겨 보세요.'));
+    return wrap;
+  }
+  wrap.append(h('div', { class: 'list', 'aria-live': 'polite' }, R.rows.map((r) =>
+    h('article', { class: 'card' },
+      h('span', { class: 'date' }, r.used_on),
+      h('h2', {}, r.book_title),
+      h('span', { class: 'pg' }, '읽은 페이지 ' + r.page_from + ' ~ ' + r.page_to + '쪽'),
+      r.note ? h('p', {}, r.note) : null))));
+  return wrap;
+}
+
+function navEl() {
+  const b = (view, label, svg) => h('button', { type: 'button', 'aria-current': state.view === view ? 'page' : null, onclick: () => go(view) }, icon(svg), h('span', {}, label));
+  return h('nav', { 'aria-label': '하단 메뉴' }, b('write', '오늘 쓰기', ICON_PEN), b('record', '기록', ICON_LIST));
+}
+
+function render() {
+  const app = document.getElementById('app');
+  const main = h('main', {});
+  if (state.fatal) main.append(h('p', { class: 'msg err', role: 'alert', style: 'text-align:left' }, state.fatal));
+  else if (!state.ready) main.append(h('p', { class: 'lead', role: 'status' }, '불러오는 중…'));
+  else if (!state.session) main.append(loginView());
+  else main.append(state.view === 'write' ? writeView() : recordView());
+  const logged = state.ready && state.session;
+  const parts = [
+    h('header', {}, icon(ICON_BOOK), h('span', { class: 'brand' }, '레테의 건너편'), h('span', { class: 'spacer' }),
+      logged ? h('button', { type: 'button', class: 'linkbtn', onclick: logout }, '로그아웃') : null),
+    main
+  ];
+  if (logged) parts.push(navEl());
+  app.replaceChildren(...parts);
+}
+
+/* ===== 시작 ===== */
+async function boot() {
+  state.authNotice = readAuthUrlError();
+  render();
+  if (!window.supabase || !window.supabase.createClient) {
+    state.fatal = '연결 도구를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.';
+    render(); return;
+  }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  sb.auth.onAuthStateChange((event, session) => {
+    const prev = state.session && state.session.user && state.session.user.id;
+    const next = session && session.user && session.user.id;
+    state.session = session;
+    if (!state.ready || prev === next) return;   // 토큰 갱신 등: 화면을 다시 그리지 않는다
+    if (!next) { state.rec = { status: 'idle', rows: [], err: '' }; state.login.sent = false; state.view = 'write'; }
+    render();
+    if (next && state.view === 'record') setTimeout(loadRecords, 0);
+  });
+  const { data } = await sb.auth.getSession();
+  state.session = data && data.session;
+  state.ready = true;
+  if (location.hash || location.search) history.replaceState(null, '', location.pathname);
+  render();
+}
+boot();
+</script>
+</body>
+</html>
