@@ -2194,7 +2194,7 @@
                     ;
                 return el;
             }
-            function mkArea(d, key, rows, ph) {
+            function mkArea(d, key, rows, ph, reg) {
                 const el = h('textarea', {
                     rows: String(rows || 4),
                     placeholder: ph || ''
@@ -2204,6 +2204,11 @@
                     d[key] = el.value;
                 }
                 );
+                if (reg)
+                    reg[key] = v => {
+                        el.value = v == null ? '' : v;
+                    }
+                    ;
                 return el;
             }
             function compressImage(file, maxDim, q) {
@@ -3106,6 +3111,20 @@
                 return out.slice(0, 10);
             }
             async function searchBooks(q) {
+                // 1순위: 국립중앙도서관 (Vercel의 /api/book-search 가 키를 숨겨서 대신 물어봄)
+                try {
+                    const r = await fetch('/api/book-search?q=' + encodeURIComponent(q));
+                    if (r.ok) {
+                        const j = await r.json();
+                        if (j.items && j.items.length)
+                            return j.items;
+                    }
+                } catch (e) {/* 내 컴퓨터에서 파일로 열었을 때 등 → 아래 Google Books로 */
+                }
+                // 2순위: Google Books
+                return searchGoogle(q);
+            }
+            async function searchGoogle(q) {
                 const raw = q.replace(/[-\s]/g, '')
                   , isIsbn = /^(\d{9}[\dXx]|\d{13})$/.test(raw);
                 const r = await fetch('https://www.googleapis.com/books/v1/volumes?maxResults=8&printType=books&q=' + encodeURIComponent(isIsbn ? 'isbn:' + raw : q));
@@ -3124,7 +3143,8 @@
                         publisher: v.publisher || '',
                         total_pages: v.pageCount ? String(v.pageCount) : '',
                         isbn: i ? i.identifier : '',
-                        cover
+                        cover,
+                        description: trim(v.description).slice(0, 3000)
                     };
                 }
                 );
@@ -3158,7 +3178,8 @@
                         tags: (editing.tags || []).join(', '),
                         series: editing.series || '',
                         next_read: editing.next_read || '',
-                        favorite: !!editing.favorite
+                        favorite: !!editing.favorite,
+                        description: editing.description || ''
                     } : {
                         key,
                         title: '',
@@ -3181,7 +3202,8 @@
                         tags: '',
                         series: '',
                         next_read: '',
-                        favorite: false
+                        favorite: false,
+                        description: ''
                     };
                 }
                 const reg = {}
@@ -3257,10 +3279,10 @@
                                 }, items.map(it => h('button', {
                                     type: 'button',
                                     onclick: () => {
-                                        ['title', 'author', 'publisher', 'isbn', 'total_pages'].forEach(k => {
-                                            d[k] = it[k];
+                                        ['title', 'author', 'publisher', 'isbn', 'total_pages', 'description'].forEach(k => {
+                                            d[k] = it[k] || '';
                                             if (reg[k])
-                                                reg[k](it[k]);
+                                                reg[k](d[k]);
                                         }
                                         );
                                         if (it.cover)
@@ -3388,7 +3410,8 @@
                             tags: parseTags(d.tags),
                             series: trim(d.series) || null,
                             next_read: trim(d.next_read) || null,
-                            favorite: !!d.favorite
+                            favorite: !!d.favorite,
+                            description: trim(d.description) || null
                         };
                         saveBtn.disabled = true;
                         setMsg('');
@@ -3427,7 +3450,7 @@
                 })), fieldEl('ISBN', mkInput(d, reg, 'isbn', {
                     inputmode: 'numeric',
                     placeholder: '숫자 10~13자리'
-                })), fieldEl('표지', cover), fieldEl('장르', genreEl), fieldEl('전체 쪽수', mkInput(d, reg, 'total_pages', {
+                })), fieldEl('표지', cover), fieldEl('책 소개', mkArea(d, 'description', 5, '검색하면 국립중앙도서관의 책 소개가 채워져요.', reg)), fieldEl('장르', genreEl), fieldEl('전체 쪽수', mkInput(d, reg, 'total_pages', {
                     type: 'number',
                     min: '1',
                     inputmode: 'numeric',
@@ -3636,7 +3659,11 @@
                     class: 'oneline'
                 }, b.one_line) : null, b.review ? h('p', {
                     class: 'review'
-                }, b.review) : null) : null, h('section', {
+                }, b.review) : null) : null, b.description ? h('section', {
+                    class: 'card'
+                }, h('h2', {}, '책 소개'), h('p', {
+                    class: 'review'
+                }, b.description)) : null, h('section', {
                     class: 'card'
                 }, rows.length ? h('dl', {
                     class: 'info'
